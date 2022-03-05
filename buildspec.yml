@@ -1,0 +1,16 @@
+version: 0.2
+
+phases:
+  install:
+    commands:
+        - echo "Scanning for any errors... "
+  build:
+    commands:
+      - echo Compiling the Python code...
+  post_build:
+    commands:
+      - echo "Complied the file successfully"
+      - zip -r application-build.zip appspec.yml TemperatureValidatorAPI.py requirements.txt scripts/pre-install.sh scripts/post-install.sh scripts/temperature-start.sh scripts/temperature-stop.sh 
+artifacts:
+  files:
+    - application-build.zip
