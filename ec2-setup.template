@@ -1,0 +1,154 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Resources": {
+        "RootRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Version": "2012-10-17",
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": [
+                                    "ec2.amazonaws.com",
+                                    "codedeploy.amazonaws.com"
+                                ]
+                            },
+                            "Action": [
+                                "sts:AssumeRole"
+                            ]
+                        }
+                    ]
+                },
+                "Path": "/",
+                "ManagedPolicyArns": [
+                    "arn:aws:iam::aws:policy/AmazonS3FullAccess",
+                    "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryFullAccess",
+                    "arn:aws:iam::aws:policy/service-role/AWSCodeDeployRole"
+
+                ],
+                "Tags" : [ {"Key" : "Name", "Value" : "project-ec2"} ]
+            }
+        },
+        "ProjectVPC": {
+            "Type": "AWS::EC2::VPC",
+            "Properties": {
+            "CidrBlock": "10.0.0.0/16",
+            "EnableDnsHostnames" : "true",
+            "EnableDnsSupport" : "true",
+            "Tags" : [ {"Key" : "Name", "Value" : "ProjectVPC"} ]
+            }
+        },
+        "ProjectSubnet": {
+            "Type": "AWS::EC2::Subnet",
+            "Properties": {
+                "VpcId": {
+                    "Ref": "ProjectVPC"
+                },
+                "Tags" : [ {"Key" : "Name", "Value" : "ProjectSubnet"} ],
+                "CidrBlock" : "10.0.1.0/24",
+      			"AvailabilityZone" : "us-east-2a",
+      			"MapPublicIpOnLaunch" : "true"
+            }
+        },
+        "SshSG": {
+            "Type": "AWS::EC2::SecurityGroup",
+            "Properties": {
+            	"SecurityGroupIngress" : [
+      			{
+         			"IpProtocol" : "tcp",
+         			"FromPort" : 22,
+         			"ToPort" : 22,
+         			"CidrIp" : "0.0.0.0/0"
+      			}],
+      			"VpcId": {
+                    "Ref": "ProjectVPC"
+                },
+                "GroupDescription": "Allows SSH",
+                "Tags" : [ {"Key" : "Name", "Value" : "SshSG"} ]
+            }
+         },
+         "ListInstanceProfile" : {
+            "Type" : "AWS::IAM::InstanceProfile",
+            "Properties" : {
+              "Path" : "/",
+              "Roles" : [
+                {
+                  "Ref" : "RootRole"}
+              ]
+            }
+          },
+        "projectInternetGateway" : {
+          "Type" : "AWS::EC2::InternetGateway",
+          "Properties" : {
+            "Tags" : [ {"Key" : "stack", "Value" : "production"}]
+          }
+        },
+        "AttachGateway" : {
+           "Type" : "AWS::EC2::VPCGatewayAttachment",
+           "Properties" : {
+              "VpcId" : { "Ref" : "ProjectVPC" },
+              "InternetGatewayId" : { "Ref" : "projectInternetGateway" }
+            }
+        },
+        "RouteTable1" : {
+   			"Type" : "AWS::EC2::RouteTable",
+   			"Properties" : {
+      			"VpcId" : { "Ref" : "ProjectVPC" },
+      			"Tags" : [ {"Key" : "Name", "Value" : "RouteTable1"} ]
+     		}
+   		},
+   		"myRoute1" : {
+   			"Type" : "AWS::EC2::Route",
+   			"Properties" : {
+      			"RouteTableId" : { "Ref" : "RouteTable1" },
+      			"DestinationCidrBlock" : "0.0.0.0/0",
+      			"GatewayId" : { "Ref" : "projectInternetGateway" }
+   			}
+		},
+		"mySubnetRouteTableAssociation1" : {
+         "Type" : "AWS::EC2::SubnetRouteTableAssociation",
+         "Properties" : {
+            "SubnetId" : { "Ref" : "ProjectSubnet" },
+            "RouteTableId" : { "Ref" : "RouteTable1" }
+          }
+        },
+        "EC2Instance1": {
+            "Type": "AWS::EC2::Instance",
+            "Properties": {
+            	"InstanceType" : "t2.micro",
+            	"ImageId" : "ami-0661cd3308ec33aaa",
+                "KeyName" : "assignment-keypair",
+                "IamInstanceProfile" : {
+                    "Ref" : "ListInstanceProfile"
+                  },
+                "Tags" : [ {"Key" : "Name", "Value" : "project-ec2"} ],
+                "NetworkInterfaces": [
+                    {
+                        "SubnetId":
+                        {
+                            "Ref" : "ProjectSubnet"
+                        },
+                        "GroupSet": [{ "Ref" : "SshSG" }],
+                        "DeviceIndex": "0",
+                        "DeleteOnTermination": "true"
+                    }
+                ],
+                "UserData": {"Fn::Base64":  {"Fn::Join": ["\n",[
+                            "#!/bin/bash -xe",
+                            "sudo yum update -y",
+                            "sudo yum install ruby -y",
+                            "sudo yum install wget -y",
+                            "cd /home/ec2-user",
+                            "wget https://aws-codedeploy-us-east-2.s3.us-east-2.amazonaws.com/latest/install",
+                            "chmod +x ./install",
+                            "sudo ./install auto",
+                            "sudo service codedeploy-agent start",
+                            "sudo service codedeploy-agent status"
+                ]]}}
+            }
+        }
+    }
+    
+}
